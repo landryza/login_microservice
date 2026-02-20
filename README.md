@@ -128,7 +128,7 @@ sequenceDiagram
 
 How to start the code:
 1. in a terminal paste this: pip install -r requirements.txt
-2. Then run the server: uvicorn main:app --host 127.0.0.1 --port 5002 --reload
+2. Then run the server: python -m uvicorn main:app --host 127.0.0.1 --port 5002 --reload
 You should see: Uvicorn running on http://127.0.0.1:5002
 3. Open the Swagger docs: https://<your-codespace>-5002.app.github.dev/docs
 
