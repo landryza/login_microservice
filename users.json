@@ -6,5 +6,9 @@
   "bill": {
     "display_name": "Bill",
     "password_hash": "pbkdf2_sha256$120000$cYMBzmDXzf6YbezTLTAUeQ==$7gv0Z7wP43p/rbcE7Gq6++YQs58GD2tHjWiCFVB9vEA="
+  },
+  "john": {
+    "display_name": "John",
+    "password_hash": "pbkdf2_sha256$120000$KSDUcTcyePDTUHTb6CGtUg==$fLxd3GCpNmrHaKMaKpdIvDzQvitE73AJIQkHX8w5RI0="
   }
 }
