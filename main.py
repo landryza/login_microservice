@@ -1,18 +1,16 @@
 """
-Login / User Microservice (CS361-friendly)
+Login / User Microservice (CS361-friendly, Swagger-auth works)
 
 Features:
-- Create user (persisted to users.json)
+- Create user (saved to users.json)
 - Login -> returns bearer token
 - /me -> requires bearer token (Swagger "Authorize" works)
-- /validate -> validate token (main-program friendly)
 - Public user profile endpoint
 - /ping echo endpoint for CS361 demo
-- /health endpoint
 
 Run:
   pip install -r requirements.txt
-  python -m uvicorn main:app --host 127.0.0.1 --port 5002 --reload
+  uvicorn main:app --host 127.0.0.1 --port 5002 --reload
 """
 
 from __future__ import annotations
@@ -25,19 +23,13 @@ import os
 import secrets
 import time
 from dataclasses import dataclass
-from typing import Dict, Optional
+from typing import Dict
 
 from fastapi import FastAPI, HTTPException, Depends
-from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pydantic import BaseModel, Field
 
-# ----------------------------
-# Config
-# ----------------------------
-
-DATA_FILE = os.getenv("LOGIN_DATA_FILE", "users.json")
-TOKEN_TTL_SECONDS = int(os.getenv("TOKEN_TTL_SECONDS", "0"))  # 0 = never expire
+DATA_FILE = "users.json"
 
 # ----------------------------
 # Password hashing utilities
@@ -100,11 +92,6 @@ class MeResponse(BaseModel):
     ok: bool
     user: UserPublic
 
-class ValidateResponse(BaseModel):
-    ok: bool
-    user_id: Optional[str] = None
-    message: Optional[str] = None
-
 class PingRequest(BaseModel):
     message: str
 
@@ -129,12 +116,6 @@ SESSIONS: Dict[str, Session] = {}
 # USERS[user_id] = {"display_name": "...", "password_hash": "..."}
 USERS: Dict[str, Dict[str, str]] = {}
 
-def _atomic_write_json(path: str, data: object) -> None:
-    tmp = path + ".tmp"
-    with open(tmp, "w", encoding="utf-8") as f:
-        json.dump(data, f, indent=2)
-    os.replace(tmp, path)
-
 def load_users() -> None:
     global USERS
     if not os.path.exists(DATA_FILE):
@@ -148,7 +129,10 @@ def load_users() -> None:
         USERS = {}
 
 def save_users() -> None:
-    _atomic_write_json(DATA_FILE, USERS)
+    tmp = DATA_FILE + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump(USERS, f, indent=2)
+    os.replace(tmp, DATA_FILE)
 
 def public_user(user_id: str) -> UserPublic:
     u = USERS.get(user_id)
@@ -160,36 +144,13 @@ def public_user(user_id: str) -> UserPublic:
 # FastAPI app + security
 # ----------------------------
 
-app = FastAPI(title="User/Login Microservice", version="1.1.0")
-security = HTTPBearer(auto_error=True)
+app = FastAPI(title="User/Login Microservice", version="1.0.0")
 
-# CORS: allow main program (or any client) to call your service
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],         # simple for class demo
-    allow_credentials=False,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+security = HTTPBearer(auto_error=True)
 
 @app.on_event("startup")
 def _startup() -> None:
     load_users()
-
-# ----------------------------
-# Helpers
-# ----------------------------
-
-def _session_valid(token: str) -> Optional[Session]:
-    sess = SESSIONS.get(token)
-    if not sess:
-        return None
-    if TOKEN_TTL_SECONDS > 0:
-        if time.time() - sess.created_at > TOKEN_TTL_SECONDS:
-            # expire it
-            del SESSIONS[token]
-            return None
-    return sess
 
 # ----------------------------
 # Endpoints
@@ -198,10 +159,6 @@ def _session_valid(token: str) -> Optional[Session]:
 @app.get("/")
 def root():
     return {"ok": True, "service": "login_microservice", "docs": "/docs"}
-
-@app.get("/health")
-def health():
-    return {"ok": True}
 
 @app.post("/users", response_model=CreateUserResponse)
 def create_user(req: CreateUserRequest) -> CreateUserResponse:
@@ -246,22 +203,11 @@ def login(req: LoginRequest) -> LoginResponse:
 
 @app.get("/me", response_model=MeResponse)
 def me(credentials: HTTPAuthorizationCredentials = Depends(security)) -> MeResponse:
-    token = credentials.credentials
-    sess = _session_valid(token)
+    token = credentials.credentials  # NOTE: this is the token WITHOUT "Bearer "
+    sess = SESSIONS.get(token)
     if not sess:
         raise HTTPException(status_code=401, detail="Invalid or expired token")
     return MeResponse(ok=True, user=public_user(sess.user_id))
-
-@app.get("/validate", response_model=ValidateResponse)
-def validate(credentials: HTTPAuthorizationCredentials = Depends(security)) -> ValidateResponse:
-    """
-    Main programs can call this to confirm a token is valid and get the user_id.
-    """
-    token = credentials.credentials
-    sess = _session_valid(token)
-    if not sess:
-        return ValidateResponse(ok=False, message="Invalid or expired token")
-    return ValidateResponse(ok=True, user_id=sess.user_id)
 
 @app.post("/ping", response_model=PingResponse)
 def ping(req: PingRequest) -> PingResponse:
